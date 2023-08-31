@@ -1,0 +1,149 @@
+GET http://localhost:3000/states/
+####
+Get http://localhost:3000/states/7/
+####
+put http://localhost:3000/districts/
+Content-Type:application/json
+
+{
+  "districtName": "Bagalkot",
+  "stateId": 3,
+  "cases": 2323,
+  "cured": 2000,
+  "active": 315,
+  "deaths": 8
+}
+####
+GET http://localhost:3000/districts/7/
+
+####
+DELETE http://localhost:3000/districts/4/
+######
+put http://localhost:3000/districts/5/
+Content-Type:application/json 
+
+{
+  "districtName": "Nadia",
+  "stateId": 3,
+  "cases": 9628,
+  "cured": 6524,
+  "active": 3000,
+  "deaths": 104
+}
+######
+GET http://localhost:3000/states/6/stats/
+####
+GET http://localhost:3000/districts/3/details/
+
+
+
+
+code:
+const express = require("express");
+const path = require("path");
+
+const { open } = require("sqlite");
+const sqlite3 = require("sqlite3");
+const app = express();
+app.use(express.json());
+const dbPath = path.join(__dirname, "covid19India.db");
+let db = null;
+const initializeDBAndServer = async () => {
+  try {
+    db = await open({
+      filename: dbPath,
+      driver: sqlite3.Database,
+    });
+    app.listen(3000, () => {
+      console.log("Server Running at http://localhost:3000/");
+    });
+  } catch (e) {
+    console.log(`DB Error: ${e.message}`);
+    process.exit(1);
+  }
+};
+initializeDBAndServer();
+const change = (each) => {
+  return {
+    stateId: each.state_id,
+    stateName: each.state_name,
+    population: each.population,
+  };
+};
+const d = (each) => {
+  return {
+    districtId: each.district_id,
+    districtName: each.district_name,
+    stateId: each.state_id,
+    cases: each.cases,
+    cured: each.cured,
+    active: each.active,
+    deaths: each.deaths,
+  };
+};
+/* first*/
+app.get("/states/", async (request, response) => {
+  const gettingstates = `select * from state order by state_id;`;
+  const states = await db.all(gettingstates);
+  response.send(states.map((each) => change(each)));
+});
+app.get("/states/:stateId/", async (request, response) => {
+  const { stateId } = request.params;
+  const dbinfo = `select * from state where state_id='${stateId}';`;
+  const multiplelines = await db.get(dbinfo);
+  response.send(change(multiplelines));
+});
+app.put("/districts/", async (request, response) => {
+  const data = request.body;
+  const { districtName, stateId, cases, cured, active, deaths } = data;
+  const insertingofdata = `insert into district(district_name,state_id,cases,cured,active,deaths)
+    values('${districtName}','${stateId}','${cases}','${cured}','${active}','${deaths}');`;
+  response.send("District Successfully Added");
+});
+app.get("/districts/:districtId/", async (request, response) => {
+  const { districtId } = request.params;
+  const dbinfo = `select * 
+   from district where district_id='${districtId}';`;
+  const each = await db.get(dbinfo);
+  response.send(d(each));
+});
+app.delete("/districts/:districtId/", async (request, response) => {
+  const { districtId } = request.params;
+  const dbinfo = `DELETE from district where district_id='${districtId}';`;
+  await db.run(dbinfo);
+  response.send("District Removed");
+});
+app.put("/districts/:districtId/", async (request, response) => {
+  const { districtId } = request.params;
+  const data = request.body;
+  const { districtName, stateId, cases, cured, active, deaths } = data;
+  const dbdetails = `update district 
+    set
+        district_name='${districtName}',
+        state_id='${stateId}',
+        cases='${cases}',
+        cured='${cured}',
+        active='${active}',
+        deaths='${deaths}'
+    
+    where district_id='${districtId}';`;
+  await db.run(dbdetails);
+
+  response.send("District Details Updated");
+});
+
+app.get("/states/:stateId/stats/", async (request, response) => {
+  const { stateId } = request.params;
+  const dbdetails = `select sum(cases) as totalCases, sum(cured) as totalCured,sum(active)as totalActive, sum(deaths)as totalDeaths
+    from district where state_id='${stateId}';`;
+  const change = await db.get(dbdetails);
+  response.send(change);
+});
+app.get("/districts/:districtId/details/", async (request, response) => {
+  const { districtId } = request.params;
+  const combingtables = `select state_name as stateName from state natural join district
+    where district_id='${districtId}';`;
+  const final = await db.get(combingtables);
+  response.send(final);
+});
+module.exports = app;
